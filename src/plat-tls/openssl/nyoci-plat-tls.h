@@ -55,6 +55,7 @@ struct nyoci_openssl_session_s {
 	coap_msg_id_t msg_id;
 	struct nyoci_timer_s dtls_timer;
 	struct ssl_st* ssl;
+	nyoci_status_t status;
 };
 
 struct nyoci_plat_tls_s {
@@ -67,6 +68,11 @@ struct nyoci_plat_tls_s {
 	struct ssl_st* next_ssl;
 
 	struct nyoci_openssl_session_s* sessions;
+
+	nyoci_plat_tls_client_psk_callback_func client_psk_callback;
+	void* client_psk_callback_context;
+	nyoci_plat_tls_server_psk_callback_func server_psk_callback;
+	void* server_psk_callback_context;
 };
 
 NYOCI_END_C_DECLS

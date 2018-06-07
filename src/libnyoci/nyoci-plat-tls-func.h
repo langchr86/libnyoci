@@ -40,6 +40,9 @@
 #define nyoci_plat_tls_set_context(self,...)		nyoci_plat_tls_set_context(__VA_ARGS__)
 #define nyoci_plat_tls_inbound_packet_process(self,...)		nyoci_plat_tls_inbound_packet_process(__VA_ARGS__)
 #define nyoci_plat_tls_outbound_packet_process(self,...)		nyoci_plat_tls_outbound_packet_process(__VA_ARGS__)
+#define nyoci_plat_tls_set_client_psk_callback(self,...)        nyoci_plat_tls_set_client_psk_callback(__VA_ARGS__)
+#define nyoci_plat_tls_set_server_psk_callback(self,...)        nyoci_plat_tls_set_server_psk_callback(__VA_ARGS__)
+#define nyoci_plat_tls_set_psk_hint(self,...)                   nyoci_plat_tls_set_psk_hint(__VA_ARGS__)
 #endif
 
 
@@ -74,6 +77,27 @@ NYOCI_API_EXTERN void* nyoci_plat_tls_get_current_session(void);
 **	This function can only be meaningfuly called from a callback.
 */
 NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_set_remote_hostname(const char* hostname);
+
+typedef unsigned int (*nyoci_plat_tls_client_psk_callback_func)(
+	void* context,
+	const char *hint,
+	char *identity, unsigned int max_identity_len,
+	unsigned char *psk, unsigned int max_psk_len
+);
+
+typedef unsigned int (*nyoci_plat_tls_server_psk_callback_func)(
+	void* context,
+	const char *identity,
+	unsigned char *psk, unsigned int max_psk_len
+);
+
+NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_set_client_psk_callback(nyoci_t self, nyoci_plat_tls_client_psk_callback_func cb, void* context);
+
+NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_set_server_psk_callback(nyoci_t self, nyoci_plat_tls_server_psk_callback_func cb, void* context);
+
+NYOCI_API_EXTERN const char* nyoci_plat_tls_get_psk_identity(void);
+
+NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_set_psk_hint(nyoci_t self, const char* hint);
 
 //! Called by the platform to dispatch inbound DTLS packets.
 NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_inbound_packet_process(
