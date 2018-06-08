@@ -258,36 +258,50 @@ bail:
 }
 
 char*
-get_next_arg(char *buf, char **rest) {
+get_next_arg(char *buf, char **rest)
+{
 	char* ret = NULL;
-
-	while(*buf && isspace(*buf)) buf++;
-
-	if(!*buf || *buf == '#')
-		goto bail;
-
-	ret = buf;
-
 	char quote_type = 0;
-	char* write_iter = ret;
+	char* write_iter = NULL;
 
-	while(*buf) {
-		if(quote_type && *buf==quote_type) {
-			quote_type = 0;
+	// Trim whitespace
+	while (isspace(*buf)) {
+		buf++;
+	};
+
+	// Skip if we are empty or the start of a comment.
+	if ((*buf == 0) || (*buf == '#')) {
+		goto bail;
+	}
+
+	write_iter = ret = buf;
+
+	while (*buf != 0) {
+		if (quote_type != 0) {
+			// We are in the middle of a quote, so we are
+			// looking for matching end of the quote.
+			if (*buf == quote_type) {
+				quote_type = 0;
+				buf++;
+				continue;
+			}
+		} else {
+			if (*buf == '"' || *buf == '\'') {
+				quote_type = *buf++;
+				continue;
+			}
+
+			// Stop parsing arguments if we hit unquoted whitespace.
+			if (isspace(*buf)) {
+				buf++;
+				break;
+			}
+		}
+
+		// Allow for slash-escaping
+		if ((buf[0] == '\\') && (buf[1] != 0)) {
 			buf++;
-			continue;
 		}
-		if(*buf == '"' || *buf == '\'') {
-			quote_type = *buf++;
-			continue;
-		}
-
-		if(!quote_type && isspace(*buf)) {
-			buf++;
-			break;
-		}
-
-		if(buf[0]=='\\' && buf[1]) buf++;
 
 		*write_iter++ = *buf++;
 	}
@@ -295,8 +309,9 @@ get_next_arg(char *buf, char **rest) {
 	*write_iter = 0;
 
 bail:
-	if(rest)
+	if (rest) {
 		*rest = buf;
+	}
 	return ret;
 }
 
@@ -609,6 +624,7 @@ print_version() {
 }
 
 // MARK: -
+// MARK: DTLS Stuff
 
 #if NYOCI_DTLS
 char gNyocictlClientPskIdentity[128];
@@ -655,27 +671,32 @@ main(
 ) {
 	int i, debug_mode = 0;
 	uint16_t port = 61616;
+
 #if NYOCI_DTLS
 	uint16_t ssl_port = 61617;
 	int ssl_ret;
-#endif
+	nyoci_plat_tls_context_t ssl_ctx = NYOCI_PLAT_TLS_DEFAULT_CONTEXT;
 
-#if NYOCI_DTLS
-	SSL_CTX* ssl_ctx = NYOCI_PLAT_TLS_DEFAULT_CONTEXT;
 #if NYOCI_PLAT_TLS_OPENSSL && HAVE_OPENSSL_SSL_CONF_CTX_NEW
 	SSL_CONF_CTX* ssl_conf_ctx = SSL_CONF_CTX_new();
+
 #if HAVE_OPENSSL_DTLS_METHOD
 	ssl_ctx = SSL_CTX_new(DTLS_method());
-#else
+#else // if HAVE_OPENSSL_DTLS_METHOD
 	ssl_ctx = SSL_CTX_new(DTLSv1_2_method());
-#endif
+#endif // else HAVE_OPENSSL_DTLS_METHOD
+
+	// Make sure the PSK mechanisms are present.
+	SSL_CTX_set_cipher_list(ssl_ctx, "ALL:!EXPORT:!LOW:!aNULL:!eNULL:!SSLv2:-CAMILLA:PSK");
+
 	SSL_CONF_CTX_set_ssl_ctx(ssl_conf_ctx, ssl_ctx);
 	SSL_CONF_CTX_set_flags(ssl_conf_ctx, SSL_CONF_FLAG_CLIENT|SSL_CONF_FLAG_CERTIFICATE|SSL_CONF_FLAG_SHOW_ERRORS);
+	SSL_CONF_CTX_set_flags(ssl_conf_ctx, SSL_CONF_FLAG_FILE);
+	SSL_CONF_CTX_set1_prefix(ssl_conf_ctx, "NYOCICTL_SSL_");
+
 #ifdef SSL_CONF_FLAG_REQUIRE_PRIVATE
 	SSL_CONF_CTX_set_flags(ssl_conf_ctx, SSL_CONF_FLAG_REQUIRE_PRIVATE);
 #endif
-	SSL_CONF_CTX_set_flags(ssl_conf_ctx, SSL_CONF_FLAG_FILE);
-	SSL_CONF_CTX_set1_prefix(ssl_conf_ctx, "NYOCICTL_SSL_");
 
 	for (i = 0; envp[i]; i++) {
 		char key[256] = {};
@@ -704,8 +725,9 @@ main(
 	SSL_CONF_CTX_set_flags(ssl_conf_ctx, SSL_CONF_FLAG_CMDLINE);
 	SSL_CONF_CTX_set1_prefix(ssl_conf_ctx, "--ssl-");
 
-#endif
-#endif
+#endif // if NYOCI_PLAT_TLS_OPENSSL && HAVE_OPENSSL_SSL_CONF_CTX_NEW
+
+#endif // if NYOCI_DTLS
 
 	srandom((unsigned)time(NULL));
 
@@ -729,7 +751,7 @@ main(
 			return ERRORCODE_BADARG;
 		}
 	}
-#endif
+#endif // if NYOCI_PLAT_TLS_OPENSSL && HAVE_OPENSSL_SSL_CONF_CTX_NEW
 	HANDLE_LONG_ARGUMENT("port") port = (uint16_t)strtol(argv[++i], NULL, 0);
 	HANDLE_LONG_ARGUMENT("debug") debug_mode++;
 
@@ -755,11 +777,6 @@ main(
 		strlcpy((char*)gNyocictlClientPsk, argv[++i], sizeof(gNyocictlClientPsk));
 		gNyocictlClientPskLength = strlen((const char*)gNyocictlClientPsk);
 	}
-	/*
-	HANDLE_LONG_ARGUMENT("psk-hex") {
-		// TODO: WRITEME
-	}
-	*/
 #endif
 	BEGIN_SHORT_ARGUMENTS(gRet)
 	HANDLE_SHORT_ARGUMENT('p') port = (uint16_t)strtol(argv[++i], NULL, 0);
@@ -767,7 +784,7 @@ main(
 #if HAVE_LIBREADLINE
 	HANDLE_SHORT_ARGUMENT('f') {
 		stdin = fopen(argv[++i], "r");
-		if(!stdin) {
+		if (!stdin) {
 			fprintf(stderr,
 				"%s: error: Unable to open file \"%s\".\n",
 				argv[0],
@@ -812,7 +829,7 @@ main(
 
 	gLibNyociInstance = nyoci_create();
 
-	if(!gLibNyociInstance) {
+	if (!gLibNyociInstance) {
 		fprintf(stderr,"%s: FATAL-ERROR: Unable to initialize nyoci instance! \"%s\" (%d)\n",argv[0],strerror(errno),errno);
 		return ERRORCODE_INIT_FAILURE;
 	}
@@ -822,6 +839,7 @@ main(
 			fprintf(stderr,"%s: FATAL-ERROR: Unable to bind to port! \"%s\" (%d)\n",argv[0],strerror(errno),errno);
 			return ERRORCODE_INIT_FAILURE;
 		}
+		port = 0;
 	}
 
 #if NYOCI_DTLS
@@ -946,13 +964,17 @@ main(
 	}
 
 bail:
+
 #if HAVE_LIBREADLINE
 	rl_callback_handler_remove();
 #endif  // HAVE_LIBREADLINE
-	if(gRet == ERRORCODE_QUIT)
-		gRet = 0;
 
-	if(gLibNyociInstance)
+	if (gRet == ERRORCODE_QUIT) {
+		gRet = 0;
+	}
+
+	if (gLibNyociInstance) {
 		nyoci_release(gLibNyociInstance);
+	}
 	return gRet;
 }

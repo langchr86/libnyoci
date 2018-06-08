@@ -66,6 +66,21 @@
 unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
 int cookie_initialized=0;
 
+nyoci_status_t
+nyoci_plat_tls_init(void)
+{
+	static bool did_init;
+	if (!did_init) {
+		SSL_library_init();
+		OpenSSL_add_all_algorithms();
+		ERR_load_BIO_strings();
+		SSL_load_error_strings();
+		ERR_load_crypto_strings();
+		did_init = true;
+	}
+	return NYOCI_STATUS_OK;
+}
+
 static int
 generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
 {
@@ -118,7 +133,7 @@ generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
 }
 
 static int
-verify_cookie(SSL *ssl, unsigned char *cookie, unsigned int cookie_len)
+verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len)
 {
 	unsigned char result[EVP_MAX_MD_SIZE];
 	unsigned int resultlength;
@@ -537,28 +552,6 @@ bail:
 	return ret;
 }
 
-static void
-load_dh_params(SSL_CTX *ctx)
-{
-	DH *dh=NULL;
-	// SECURITY: This whole section needs to be removed or rewritten, these are insecure defaults.
-
-	if(((dh = DH_new()) == NULL) || !DH_generate_parameters_ex(dh, 128, 5, NULL)) {
-		DEBUG_PRINTF("Couldn't generate DH");
-		return;
-	}
-
-	if (!DH_generate_key(dh))  {
-		DEBUG_PRINTF("Couldn't generate DH key");
-		return;
-	}
-
-	if (SSL_CTX_set_tmp_dh(ctx,dh)<0) {
-		DEBUG_PRINTF("Couldn't set DH params");
-		return;
-	}
-}
-
 nyoci_status_t
 nyoci_plat_tls_set_remote_hostname(const char* hostname)
 {
@@ -566,13 +559,13 @@ nyoci_plat_tls_set_remote_hostname(const char* hostname)
 	return NYOCI_STATUS_OK;
 }
 
-void*
+nyoci_plat_tls_context_t
 nyoci_plat_tls_get_context(nyoci_t self) {
 	NYOCI_SINGLETON_SELF_HOOK;
 	return self->plat.ssl.ssl_ctx;
 }
 
-void*
+nyoci_plat_tls_session_t
 nyoci_plat_tls_get_current_session(void) {
 	nyoci_t const self = nyoci_get_current_instance();
 	if (self->plat.ssl.curr_session) {
@@ -663,16 +656,11 @@ nyoci_plat_tls_set_psk_hint(nyoci_t self, const char* hint)
 }
 
 nyoci_status_t
-nyoci_plat_tls_set_context(nyoci_t self, void* context) {
+nyoci_plat_tls_set_context(nyoci_t self, nyoci_plat_tls_context_t context) {
 	NYOCI_SINGLETON_SELF_HOOK;
 	nyoci_status_t ret = NYOCI_STATUS_FAILURE;
 
-	// TODO: Does this init stuff really belong here?
-	SSL_library_init();
-	OpenSSL_add_all_algorithms();
-	ERR_load_BIO_strings();
-	SSL_load_error_strings();
-	ERR_load_crypto_strings();
+	nyoci_plat_tls_init();
 
 	if (context == NYOCI_PLAT_TLS_DEFAULT_CONTEXT) {
 		// Set up a context with reasonable defaults.
@@ -689,21 +677,16 @@ nyoci_plat_tls_set_context(nyoci_t self, void* context) {
 
 		self->plat.ssl.ssl_ctx = ctx;
 
-		// TODO: SECURITY: REMOVE THIS FOR PRODUCTION.
-		SSL_CTX_set_cipher_list(ctx, "ALL:NULL:eNULL:aNULL");
-
-		//SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, dtls_verify_callback);
+		// We can't verify the peer at this point.
 		SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, dtls_verify_callback);
+
+		SSL_CTX_set_cipher_list(ctx, "ALL:!EXPORT:!LOW:!aNULL:!eNULL:!SSLv2:-CAMILLA:PSK");
 
 	} else {
 		self->plat.ssl.ssl_ctx = context;
 	}
-	//SSL_CTX_set_verify(self->plat.ssl.ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, dtls_verify_callback);
 
 	require(self->plat.ssl.ssl_ctx != NULL, bail);
-
-	// TODO: SECURITY: REMOVE THIS FOR PRODUCTION.
-	//load_dh_params(self->plat.ssl.ssl_ctx);
 
 	SSL_CTX_set_session_cache_mode(self->plat.ssl.ssl_ctx, SSL_SESS_CACHE_OFF);
 	SSL_CTX_set_cookie_generate_cb(self->plat.ssl.ssl_ctx, generate_cookie);

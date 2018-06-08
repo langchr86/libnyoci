@@ -45,6 +45,7 @@
 #define nyoci_plat_tls_set_psk_hint(self,...)                   nyoci_plat_tls_set_psk_hint(__VA_ARGS__)
 #endif
 
+NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_init(void);
 
 //! Sets the security context to be associated with this LibNyoci instance.
 /*!	The type of object that this pointer referrs to depends on
@@ -56,10 +57,10 @@
 **	security settings.
 */
 NYOCI_API_EXTERN nyoci_status_t nyoci_plat_tls_set_context(
-	nyoci_t self, void* context
+	nyoci_t self, nyoci_plat_tls_context_t context
 );
 
-NYOCI_API_EXTERN void* nyoci_plat_tls_get_context(nyoci_t self);
+NYOCI_API_EXTERN nyoci_plat_tls_context_t nyoci_plat_tls_get_context(nyoci_t self);
 
 //! Returns a pointer to the current security session object.
 /*!	The type of object that this pointer referrs to depends on
@@ -68,7 +69,7 @@ NYOCI_API_EXTERN void* nyoci_plat_tls_get_context(nyoci_t self);
 **
 **	This function can only be meaningfuly called from a callback.
 */
-NYOCI_API_EXTERN void* nyoci_plat_tls_get_current_session(void);
+NYOCI_API_EXTERN nyoci_plat_tls_session_t nyoci_plat_tls_get_current_session(void);
 
 //!	Sets the intended target hostname for the current security session.
 /*!	If the remote host fails to validate against this hostname,
